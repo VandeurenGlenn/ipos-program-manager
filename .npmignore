@@ -1,0 +1,6 @@
+node_modules
+*.md
+rollup.config.js
+.eslintrc
+test.js
+src
