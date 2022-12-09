@@ -1,29 +1,17 @@
-import { writeFile, readFile, accessSync, mkdir } from 'fs';
-import { cachePath, programPath, sourcesPath } from './paths.js';
+import { writeFile, access, mkdir } from 'fs/promises';
+import { join, sep } from 'path';
 
-export const write = (path, data) => new Promise((resolve, reject) => {
-  writeFile(path, data, error => {
-    if (error) reject(error);
-    else resolve();
-  });
-});
+import { cachePath, appPath, packagesPath } from './paths.js';
 
-export const read = (path, data) => new Promise((resolve, reject) => {
-  readFile(path, (error, data) => {
-    if (error) reject(error);
-    else resolve(data);
-  });
-});
+export const writeToCache = (path, data) => writeFile(cachePath(path), data);
 
-export const writeToCache = (path, data) => write(cachePath(path), data);
+export const writeToPackages = (path, data) => writeFile(packagesPath(path), data);
 
-export const writeToSources = (path, data) => write(sourcesPath(path), data);
-
-export const writeToPrograms = (path, data) => write(ProgramPath(path), data);
+export const writeToPrograms = (path, data) => writeFile(appPath(path), data);
 
 export const exists = async path => {
   try {
-    await accessSync(path);
+    await access(path);
     return true;
   } catch (error) {
     if (error.code === 'ENOENT') return false;
@@ -32,12 +20,28 @@ export const exists = async path => {
 }
 
 export const existsOrCreate = async path => {
-  if (!Array.isArray(path)) path = [...path];
+  if (!Array.isArray(path)) path = [path];
   path.forEach(async path => {
     try {
-      await accessSync(path);
+      await access(path);
     } catch (error) {
-      if (error.code === 'ENOENT') mkdir(path);
+      
+      
+      if (error.code === 'ENOENT') {
+        const splits = path.split(sep)
+        const dirs = splits.slice(1, splits.length)
+        let parent = sep
+        for (const dir of dirs) {
+          parent = join(parent, dir)
+          try {
+            await access(parent);            
+          } catch (error) {
+            if (error.code === 'ENOENT') await mkdir(parent)
+            else throw error;
+          }
+        }
+        
+      }
       else throw error;
     }
   });

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-const ipm = require('./../lib/ipm.js');
+import ipm from './../src/ipm.js'
+import packageJSON from './../package.json' assert {type: 'json'}
 
 const params = {
 	cache: true
@@ -23,6 +24,10 @@ for (const param of process.argv) {
       params.remove = true;
 			program = getNextParam('remove')
     break;
+		case 'purge':
+      params.purge = true;
+			program = getNextParam('purge')
+    break;
 	  case 'install':
       params.install = true;
 			program = getNextParam('install')
@@ -39,6 +44,9 @@ for (const param of process.argv) {
 			params.whereis = true;
 			program = getNextParam('whereis')
 		break;
+		case '--all': 
+			params.all = true
+		break;
     case '--dev':
       params.dev = true;
     break;
@@ -48,15 +56,19 @@ for (const param of process.argv) {
 		case '--help':
 			console.group();
 
-			console.log(`add: download program & add to /.sources
+			console.log(`add: download program & add to /.packages
 				ipm add 'program[@version]'
 				`);
 
-			console.log(`remove: remove program source from /.sources
+			console.log(`remove: remove program source from /.packages
 				ipm remove 'program[@version]'
 				`);
 
-			console.log(`uninstall: uninstall program and remove sources if any
+			console.log(`purge: purge program and remove packages/cache if any (add --all flag to remove every version)
+				ipm purge 'program[@version]'
+				`);
+
+			console.log(`uninstall: uninstall program and remove packages if any
 				ipm uninstall 'program[@version]'
 				`);
 
@@ -69,16 +81,9 @@ for (const param of process.argv) {
 
 			console.groupEnd();
 		break;
-		case '--version':
-			const { join } = require('path');
-			require('fs').readFile(join(__dirname, 'package.json'), (error, data) => {
-				if (error) return console.error(error);
-
-				const { version } = JSON.parse(data.toString());
-				console.log(`version: ${version}`)
-			})
+		case '--version':	console.log(`version: ${packageJSON.version}`)
 		break;
 	}
 }
 
-imp(program, params);
+ipm(program, params);

@@ -1,8 +1,7 @@
 import { join } from 'path';
 
-export const programPath = program => join('/programs', program);
+export const appPath = app => join('/.ipm', 'apps', app || '');
 
+export const packagesPath = program => join('/.ipm', '.packages', program || '');
 
-export const sourcesPath = program => join('/.sources', program);
-
-export const cachePath = path => join('/.cache', path);
+export const cachePath = path => join('/.ipm', '.cache', path || '');

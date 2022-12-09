@@ -1,6 +1,7 @@
 export const validateOptions = async (program, {
   add,
   install,
+  purge,
   remove,
   uninstall,
   version,
@@ -8,8 +9,8 @@ export const validateOptions = async (program, {
   whereis,
   packages,
   programs }) => {
-  if (!program && !update) return console.error('No program to install');
-  if (!add && !install && !remove && !uninstall && !version && !whereis && !packages && !programs) throw new Error('expected add, install, remove, uninstall, whereis, packages, programs or version to be true')
+  if (!program && !update) return 'No program to install'
+  if (!add && !install && !remove && !uninstall && !version && !whereis && !packages && !programs && !purge) throw new Error('expected add, install, remove, uninstall, whereis, packages, purge, programs or version to be true')
 }
 
 export const transformOptions = options => {

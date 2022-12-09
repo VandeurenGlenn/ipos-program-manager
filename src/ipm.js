@@ -1,13 +1,13 @@
-import { fetch, warn, removeSources, uninstallProgram, globProgram } from './util.js';
+import { warn, uninstallProgram, hasPackage, purge } from './util.js';
 import { validateOptions, transformOptions } from './modules/options.js';
-import { cachePath, programPath, sourcesPath } from './modules/paths.js';
-import { existsOrCreate, exists, writeToCache, write, read }  from './modules/fs.js';
+import { cachePath, appPath, packagesPath } from './modules/paths.js';
+import { existsOrCreate }  from './modules/fs.js';
+import { readdir, readFile, writeFile } from 'fs/promises';
 import decompress from 'decompress';
 import download from 'download';
-import { join } from 'path';
-import { prompt } from 'inquirer';
-
-// TODO: check cache before downloading sources
+import { join, sep } from 'path';
+import inquirer from 'inquirer';
+const prompt = inquirer.prompt
 // TODO: Implement ipfs ipm registry
 
 const searchRegistery = async () => {
@@ -23,23 +23,26 @@ const searchRegistery = async () => {
 const searchNPMRegistery = async (program, version) => {
   try {
     let data = await fetch(`https://registry.npmjs.com/${program}`);
-    data = JSON.parse(data);
+    data = await data.json()
     if (data.error && data.error === 'Not found') return null;
     else if (data.error) throw error;
     version = data.versions[version];
-    if (!version) version =  data['dist-tags'].latest;
-    version = data.versions[version];
+
+    if (!version) {
+      version = data['dist-tags'].latest.split(',')[0]
+      version = data.versions[version];
+    }
+    
     // version.gitHead
     data = await download(`${version.dist.tarball}`);
-    await writeToCache(version.dist.tarball.split('/-/')[1], data);
-    await decompress(data, '/.sources', {
+    await decompress(data, packagesPath(), {
       map: file => {
-        let path = version.name;
-        if (version) path = `${version.name}-${version.version}`;
-        file.path = join(path, file.path.replace('package/', ''));
+        // replace package with name and version
+        const splits = file.path.split(/\/|\\/g)
+        file.path = [`${program}@${version.version}`, ...splits.slice(1, splits.length)].join(sep)
         return file;
       }});
-    console.log(`sources added for ${program}@${version.version}`);
+    console.log(`added ${program}@${version.version}`);
     return 1;
   } catch (error) {
     throw error;
@@ -53,20 +56,23 @@ const getFromGithub = async (url, version) => {
     if (!url.includes('archive')) url = `${url.replace(/$\/+/, '')}/archive/${version}.tar.gz`;
 
     const data = await download(url);
-    const tarPath = Boolean(version && version !== 'master') ? `${program}-${version}` : program;
-    await writeToCache(tarPath, data);
+    const tarPath = Boolean(version && version !== 'master') ? `${program}@${version}` : program;
+    await writeFile(cachePath(tarPath), data)
     console.log(`there is some unpacking going on, please hang tight`);
-    await decompress(data, '/.sources', {
+    await decompress(data, packagesPath(), {
       map: file => {
         let path = program;
         if (version && version !== 'master') path = `${program}-${version}`;
-        file.path = join(path, file.path.replace(path, ''));
+        else  file.path = file.path.replace('-master', '')
+
+        file.path = join(path, file.path.replace(path, '')).replace(`-${version}`, `@${version}`)
         return file;
       }});
 
-      console.log(`sources added for ${program}@${version}`);
+      console.log(`added ${program}@${version}`);
       return 1;
   } catch (error) {
+    if (error.statusCode === 404) return 0
     throw error;
   }
 }
@@ -77,18 +83,20 @@ const downloadFromURL = async (url, version) => {
     if (url.includes('github')) await getFromGithub(url, version);
     else {
       const data = await download(url);
-      await writeToCache(program, data);
-      await decompress(data, '/.sources', {
+      await decompress(data, appPath(''), {
         map: file => {
           let path = program;
           if (version && version !== 'master') path = `${program}-${version}`;
-          file.path = join(path, file.path.replace(path, ''));
+          else  file.path = file.path.replace('-master', '')
+
+          file.path = join(path, file.path.replace(path, '')).replace(`-${version}`, `@${version}`)
           return file;
         }});
-        console.log(`sources added for ${program}@${version}`);
+        console.log(`added ${program}@${version}`);
     }
     return 1;
   } catch (error) {
+    return 0
     throw error;
   }
 }
@@ -96,7 +104,8 @@ const downloadFromURL = async (url, version) => {
 const searchGithubRegistery = async (program, version) => {
   const map = new Map();
   let data = await fetch(`https://api.github.com/search/repositories?q=${program}&sort=stars&order=desc`);
-  const choices = JSON.parse(data).items.filter(({ full_name, name, description, html_url }) => {
+
+  const choices = (await data.json()).items.filter(({ full_name, name, description, html_url }) => {
     map.set(full_name, html_url);
     if (name === program) return { name: `${full_name}${description ? ` - ${description}` : ''}`, value: full_name }
   });
@@ -117,13 +126,12 @@ const searchGithubRegistery = async (program, version) => {
 }
 
 /**
- *  Download program to sources (program sources are cached in the /.cache directory)
- *
+ *  Download program
  * @param {string} program - name of program to download (can also be an url...)
  * @param {string} [version] - wanted version to install
  */
 const get = async (program, version) => {
-  await existsOrCreate(['/.cache', '/.sources']);
+  await existsOrCreate([packagesPath(), cachePath()]);
   try {
     let sources;
     // TODO: handle fecthing branches
@@ -131,7 +139,7 @@ const get = async (program, version) => {
     if (!sources) sources = await searchRegistery(program, version);
     if (!sources) sources = await searchGithubRegistery(program, version); // try building from sources first
     if (!sources) sources = await searchNPMRegistery(program, version);
-
+    console.log(sources);
     if (!sources) warn(`nothing found for ${program}`);
   } catch (error) {
     throw error;
@@ -148,7 +156,7 @@ const installProgram = async (program, version) => {
   warn('Running in draft function, things might not work (yet).');
   warn('Not implemented yet, waiting on finilazed build SPEC');
   try {
-    await existsOrCreate(['/programs', '/.packages']);
+    await existsOrCreate([packagesPath()]);
     // TODO: Integrate according ipos bulld SPEC
     return;
   } catch (error) {
@@ -156,42 +164,64 @@ const installProgram = async (program, version) => {
   }
 }
 
-const programInCache =  async (program, version) => {
-  if (version) program = `${program}-${version}`;
-  return Boolean(globProgram(cachePath(program)).length > 0);
-};
-
 const whereisProgram = async program =>  {
-  const result = {};
-  const cached = await globProgram(cachePath(program));
-  const sources = await globProgram(sourcesPath(program));
-  const installed = await globProgram(programPath(program));
+  let result = await readdir(appPath())
+  let sources = await readdir(packagesPath())
+
+  result = result.filter(name => name === program || name.includes(`${program}@`))  
+  sources = sources.filter(name => name === program || name.includes(`${program}@`))
   console.group();
-  if (cached) console.log(`cached entries: ${cached.map(c => `\n\t ${c}`)}`);
-  if (sources) console.log(`source entries: ${sources.map(c => `\n\t ${c}`)}`);
-  if (installed) console.log(`install entries: ${installed.map(c => `\n\t ${c}`)}`);
-  if (!installed) console.log(`${program} not installed`);
+  if (result.length > 0) console.log(`${result.map((c, i) => `${i > 0  ? '\n' : ''}\t ${appPath(c)}`)}`);
+  if (sources.length > 0) console.log(`${sources.map((c, i) => `${i > 0  ? '\n' : ''}\t ${packagesPath(c)}`)}`);
+  if (result.length === 0 && sources.length === 0) console.log(`${program} not installed`);
   console.groupEnd();
-  return;
+  return [...result, ...sources];
 }
 
 const programVersion = async program => {
-  const result = await globProgram(programPath(program));
-  if (result.length === 0) return console.log(`${program} not installed`);
-  return await result.map(async path => {
-      try {
-        const version = await read(join(path, 'version'))
-        console.log(version);
-        return version;
-      } catch (error) {
-        if (error.code === 'ENOENT') console.warn(`no version specified for ${program} @${path}`);
-        else throw error;
-      }
-  })
+  try {
+    let result = await readdir(appPath())
+    let sources = await readdir(packagesPath())
+
+    result = result.filter(name => name === program || name.includes(`${program}@`))  
+    sources = sources.filter(name => name === program || name.includes(`${program}@`))
+    
+    if (result.length === 0 && sources.length === 0) console.log(`${program} not installed`);
+    result = await Promise.all(result.map(async path => {    
+      let branch
+      let version
+      if (path === program) branch = 'master'
+      else branch = path.split('@')[1]
+
+      if (await hasPackage(appPath(path))) version = JSON.parse((await readFile(join(appPath(path), 'package.json'))).toString()).version
+      return `${version} (${branch})`
+    }))
+    if (result.length === 0 && sources.length === 0) console.log(`${program} not installed`);
+    sources = await Promise.all(sources.map(async path => {    
+      let branch
+      let version
+      if (path === program) branch = 'master'
+      else branch = path.split('@')[1]
+
+      if (await hasPackage(packagesPath(path))) version = JSON.parse((await readFile(join(packagesPath(path), 'package.json'))).toString()).version
+      return `${version} (${branch})`
+    }))
+    console.group();
+    if (result.length > 0) console.log(`${result.map((c, i) => `${i > 0  ? '\n' : ''}\t ${c}`)}`);
+    if (sources.length > 0) console.log(`${sources.map((c, i) => `${i > 0  ? '\n' : ''}\t ${c}`)}`);
+    if (result.length === 0 && sources.length === 0) console.log(`${program} not installed`);
+    console.groupEnd();
+    return [...result, ...sources]
+  } catch (error) {
+    if (error.code === 'ENOENT') return console.log(`${program} not installed`)
+  }  
 }
 
 export default async (program, options = {}) => {
-  await validateOptions(program, options);
+  await existsOrCreate(appPath())
+  const inValid = await validateOptions(program, options);
+  if (inValid) throw new Error(inValid)
+
   const { add, install, remove, uninstall, update, whereis } = transformOptions(options);
   const parts = program.split('@');
   const version = parts[1];
@@ -199,11 +229,9 @@ export default async (program, options = {}) => {
 
   if (whereis) return await whereisProgram(program);
   if (options.version) return await programVersion(program);
-
-  const inCache = await programInCache(program, version)
-  if (add && !inCache) await get(program, version);
+  if (add) await get(program, version);
   if (install) await installProgram(program, version);
-  if (remove) await removeSources(program, version);
+  if (options.purge) await purge(program, version, options.all);
   if (uninstall) await uninstallProgram(program, version);
   if (update) await updateProgram(program);
 }

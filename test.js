@@ -1,5 +1,5 @@
-const test = require('tape');
-const ipm = require('./lib/ipm.js');
+import test from 'tape'
+import ipm from './src/ipm.js'
 
 test('add', async tape => {
   tape.plan(1);
@@ -10,9 +10,9 @@ test('add', async tape => {
   });
 
   await test('add program searching github', async tape => {
-    tape.plan(1);
-    await ipm('leofcoin-core', {add: true});
-    tape.ok(true);
+    tape.plan(1)
+    await ipm('leofcoin-core', {add: true})
+    tape.ok(true)
   })
 
   await test('add program from github using branch/release', async tape => {
@@ -45,15 +45,15 @@ test('add', async tape => {
     tape.ok(true);
   })
 
-  await test('remove program', async tape => {
+  await test('uninstall program', async tape => {
     tape.plan(1);
-    await ipm('leofcoin-core', {remove: true});
+    await ipm('leofcoin-core', {uninstall: true});
     tape.ok(true);
   })
 
-  await test('remove program using branch/release/version', async tape => {
+  await test('uninstall program using branch/release/version', async tape => {
     tape.plan(1);
-    await ipm('leofcoin-core@namesys-pubsub', { remove: true })
+    await ipm('leofcoin-core@namesys-pubsub', { uninstall: true })
     tape.ok(1)
   })
   tape.ok(true);
