@@ -34,7 +34,7 @@
     "chalk": "^5.1.2",
     "decompress": "^4.2.1",
     "download": "^8.0.0",
-    "glob": "^8.0.3",
+    "glob": "^9.0.0",
     "globby": "^13.1.2",
     "inquirer": "^9.1.4"
   },
